@@ -5,3 +5,6 @@
 	path = ImHex
 	url = https://github.com/WerWolv/ImHex
 
+[submodule "capstone"]
+	path = capstone
+	url = https://github.com/capstone-engine/capstone
