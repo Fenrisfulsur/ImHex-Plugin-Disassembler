@@ -1,3 +1,7 @@
 [submodule "ImHex"]
 	path = ImHex
 	url = https://github.com/WerWolv/ImHex
+[submodule "lib/capstone"]
+    path = lib/external/capstone
+    url = https://github.com/capstone-engine/capstone
+    ignore = dirty
