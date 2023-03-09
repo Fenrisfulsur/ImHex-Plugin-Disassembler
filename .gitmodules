@@ -1,10 +1,9 @@
-[submodule "lib/capstone"]
-    	path = lib/capstone
-    	url = https://github.com/capstone-engine/capstone
 [submodule "ImHex"]
 	path = ImHex
 	url = https://github.com/WerWolv/ImHex
-
 [submodule "capstone"]
 	path = capstone
 	url = https://github.com/capstone-engine/capstone
+[submodule "keystone"]
+	path = keystone
+	url = https://github.com/keystone-engine/keystone

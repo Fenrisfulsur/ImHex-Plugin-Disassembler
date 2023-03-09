@@ -19,7 +19,9 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 # Add additional include directories here #
-target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(${PROJECT_NAME} PRIVATE
+    include/
+)
 # Add additional libraries here #
 target_link_libraries(${PROJECT_NAME} PRIVATE)
 
