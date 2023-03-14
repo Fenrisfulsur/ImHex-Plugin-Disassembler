@@ -80,19 +80,20 @@ void ViewPatcher::disassemble() {
                 cs_free(instructions, instructionCount);
             }
 
-            // Write disassembly result in TextEditor
-
-            std::string content = "";
-            for (u32 i = 0; i < this->m_disassembly.size(); i++) {
-                content += this->m_disassembly[i].mnemonic + " " + this->m_disassembly[i].operators + "\n";
-            }
-            this->m_textViewer.SetReadOnly(true);
-            this->m_textViewer.SetShowWhitespaces(false);
-            this->m_textViewer.SetText(content);
-
             cs_close(&capstoneHandle);
+            this->setTextFromDisassembly();
         }
     });
+}
+
+void ViewPatcher::setTextFromDisassembly() {
+    std::string content = "";
+    for (u32 i = 0; i < this->m_disassembly.size(); i++) {
+        content += this->m_disassembly[i].mnemonic + " " + this->m_disassembly[i].operators + "\n";
+    }
+    this->m_textViewer.SetReadOnly(true);
+    this->m_textViewer.SetShowWhitespaces(false);
+    this->m_textViewer.SetText(content);
 }
 
 // ViewPatcher::isCursorInTextViewer() : return true if mouse is inside the text viewer
@@ -103,6 +104,13 @@ bool ViewPatcher::isCursorInTextViewer(ImVec2 pos, ImVec2 size) {
 
     return (mousePos.x >= textViewerAbsPos.x && mousePos.y >= textViewerAbsPos.y)
             && (mousePos.x <= textViewerAbsPos.x + size.x && mousePos.y <= textViewerAbsPos.y + size.y);
+}
+
+// Make the instruction editor visible and disable handling of mouse and keyboard inputs for text viewer
+void ViewPatcher::setInstrEditorVisible(bool isVisible) {
+    this->m_instrEditorIsVisible = isVisible;
+    this->m_textViewer.SetHandleMouseInputs(!isVisible);
+    this->m_textViewer.SetHandleKeyboardInputs(!isVisible);
 }
 
 void ViewPatcher::drawContent() {
@@ -341,7 +349,7 @@ void ViewPatcher::drawContent() {
             }
             ImGui::EndChild();
 
-            ImGui::BeginDisabled(this->m_disassemblerTask.isRunning() || this->m_instrEditorIsVisible);
+            ImGui::BeginDisabled(this->m_instrEditorIsVisible || this->m_disassemblerTask.isRunning());
             {
                 if (ImGui::Button("hex.builtin.view.disassembler.disassemble"_lang))
                     this->disassemble();
@@ -360,109 +368,118 @@ void ViewPatcher::drawContent() {
 
             // Text viewer and editor render and events handling
 
-            // Compute text viewer and editor size
-            auto textViewerPos  = ImGui::GetCursorPos();
-            auto textViewerSize = ImGui::GetContentRegionAvail();
-            textViewerSize.x *= 0.49;  // side by side widget
-            textViewerSize.y *= 3.75 / 5.0;
-            //textViewerSize.y -= ImGui::GetTextLineHeightWithSpacing();
-            this->m_textViewer.Render("Disassembly viewer", textViewerSize, false);
+            // Write disassembly result in TextEditor
+            if (!this->m_disassemblerTask.isRunning()) {
 
-            if (this->m_instrEditorIsVisible) {
-                // Use the same size as the text viewer to place it next to it
-                ImGui::SameLine();
-                this->m_instrEditor.SetShowWhitespaces(false);
-                this->m_instrEditor.Render("Instruction editor", textViewerSize, false);
-            }
-            ImGui::Spacing();
-
-            // Add undo and redo button because TextEditor is read-only
-            this->m_textViewer.SetReadOnly(false);
-            ImGui::BeginDisabled(!this->m_textViewer.CanUndo() || this->m_instrEditorIsVisible);
-            if (ImGui::Button(" < Undo ")) {
-                this->m_textViewer.Undo();
-                this->m_textViewer.Undo();
-            }
-            ImGui::EndDisabled();
-
-            ImGui::SameLine();
-
-            ImGui::BeginDisabled(!this->m_textViewer.CanRedo() || this->m_instrEditorIsVisible);
-            if (ImGui::Button(" Redo > ")) {
-                this->m_textViewer.Redo();
-                this->m_textViewer.Redo();
-            }
-            ImGui::EndDisabled();
-            this->m_textViewer.SetReadOnly(true);
-
-            if (this->m_instrEditorIsVisible) {
-                // Add WindowPadding two times to align button with TextEditor
-                ImGui::SameLine(textViewerSize.x + ImGui::GetStyle().WindowPadding.x * 2.0);
-                if (ImGui::Button("Cancel")) {
-                    this->m_instrEditorIsVisible = false;
-                    this->m_textViewer.SetHandleMouseInputs(true);
-                    this->m_textViewer.SetHandleKeyboardInputs(true);
+                // Compute text viewer and editor size
+                auto textViewerPos  = ImGui::GetCursorPos();
+                auto textViewerSize = ImGui::GetContentRegionAvail();
+                textViewerSize.x *= 0.49;  // side by side widget
+                textViewerSize.y *= 4.5 / 5.0;
+                this->m_textViewer.SetImGuiChildIgnored(true);
+                if (ImGui::BeginChild("Disassembly viewer", textViewerSize, true, ImGuiWindowFlags_NoNavInputs)) {
+                    this->m_textViewer.Render("Disassembly viewer", textViewerSize, true);
                 }
-                ImGui::SameLine();
-                if (ImGui::Button("Save the modifications")) {
-                    this->m_instrEditorIsVisible = false;
-                    this->m_textViewer.SetHandleMouseInputs(true);
-                    this->m_textViewer.SetHandleKeyboardInputs(true);
-                    this->m_textViewer.SetReadOnly(false);
-                    // Cut the selection and replace it by the modified instructions
-                    this->m_textViewer.Delete();
-                    // Get the text and remove last character (\n)
-                    std::string modifiedInstr = this->m_instrEditor.GetText();
-                    modifiedInstr.pop_back();
-                    ImGui::SetClipboardText(modifiedInstr.c_str());
-                    this->m_textViewer.Paste();
-                    this->m_textViewer.SetReadOnly(true);
-                }
-            }
-
-            if (this->isCursorInTextViewer(textViewerPos, textViewerSize) && !this->m_instrEditorIsVisible) {
-                ImGuiIO& io = ImGui::GetIO();
-                auto ctrl = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
-
-                // If cursor position change and there isn't already a selection, reset the selection
-                if (this->m_textViewer.IsCursorPositionChanged() && !this->m_textViewer.HasSelection() && !ImGui::IsPopupOpen("Patch menu")) {
-                    this->m_viewerHasSelection = false;
-                    this->m_viewerSelectionStart = this->m_textViewer.GetCursorPosition();
-                }
-
-                // Set selection on Ctrl+A
-                if (ctrl && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_A))) {
-                    this->m_viewerHasSelection = true;
-                }
-
-                // Change selection mode to lines when the user finish his selection (on mouse/shift key released)
-                if (this->m_textViewer.HasSelection()
-                        && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsKeyReleased(ImGuiKey_LeftShift) || ImGui::IsKeyReleased(ImGuiKey_RightShift))
-                        && !ImGui::IsPopupOpen("Patch menu")) {
-                    this->m_viewerSelectionEnd = this->m_textViewer.GetCursorPosition();
-                    this->m_textViewer.SetSelection(this->m_viewerSelectionStart, this->m_viewerSelectionEnd, TextEditor::SelectionMode::Line);
-                    this->m_viewerHasSelection = true;
-                }
+                ImGui::EndChild();
                 
-                // Open the popup menu on right click
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && this->m_viewerHasSelection) {
-                    ImGui::OpenPopup("Patch menu");
+
+                if (this->m_instrEditorIsVisible) {
+                    // Use the same size as the text viewer to place it next to it
+                    ImGui::SameLine();
+                    this->m_instrEditor.SetShowWhitespaces(false);
+                    this->m_instrEditor.SetImGuiChildIgnored(true);
+                    if (ImGui::BeginChild("Instruction editor", textViewerSize, true, ImGuiWindowFlags_NoNavInputs)) {
+                        this->m_instrEditor.Render("Instruction editor", textViewerSize, true);
+                    }
+                    ImGui::EndChild();
+                }
+                ImGui::Spacing();
+
+                // Add undo and redo button because TextEditor is read-only
+                this->m_textViewer.SetReadOnly(false);  // disable read-only to undo/redo modifications
+                ImGui::BeginDisabled(!this->m_textViewer.CanUndo() || this->m_instrEditorIsVisible);
+                if (ImGui::Button(" < Undo ")) {
+                    this->m_textViewer.Undo();  // undo Paste()
+                    this->m_textViewer.Undo();  // undo Delete()
+                }
+                ImGui::EndDisabled();
+
+                ImGui::SameLine();
+
+                ImGui::BeginDisabled(!this->m_textViewer.CanRedo() || this->m_instrEditorIsVisible);
+                if (ImGui::Button(" Redo > ")) {
+                    this->m_textViewer.Redo();  // redo Delete()
+                    this->m_textViewer.Redo();  // redo Paste()
+                }
+                ImGui::EndDisabled();
+                this->m_textViewer.SetReadOnly(true);   // re-enable read-only
+
+                if (this->m_instrEditorIsVisible) {
+                    // Add WindowPadding two times to align button with TextEditor
+                    ImGui::SameLine(textViewerSize.x + ImGui::GetStyle().WindowPadding.x * 2.0);
+                    if (ImGui::Button("Cancel")) {
+                        setInstrEditorVisible(false);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Save the modifications")) {
+                        setInstrEditorVisible(false);
+                        this->m_textViewer.SetReadOnly(false);
+                        // Cut the selection and replace it by the modified instructions
+                        this->m_textViewer.Delete();
+                        // Get the text and remove last character (\n)
+                        std::string modifiedInstr = this->m_instrEditor.GetText();
+                        modifiedInstr.pop_back();
+                        ImGui::SetClipboardText(modifiedInstr.c_str());
+                        this->m_textViewer.Paste();
+                        this->m_textViewer.SetReadOnly(true);
+                    }
                 }
 
-                // Popup menu for patching instruction
-                if (ImGui::BeginPopupContextItem("Patch menu", 2)) {
-                    if (ImGui::Selectable("Patch these instructions")) {
-                        // Set the text of instruction editor from selection and make it visible
-                        this->m_instrEditor.SetText(this->m_textViewer.GetSelectedText().c_str());
-                        this->m_instrEditorIsVisible = true;
-                        // Disable mouse and keyboard event handler in the text viewer
-                        this->m_textViewer.SetHandleMouseInputs(false);
-                        this->m_textViewer.SetHandleKeyboardInputs(false);
-                        ImGui::CloseCurrentPopup();
+                if (this->isCursorInTextViewer(textViewerPos, textViewerSize) && !this->m_instrEditorIsVisible) {
+                    ImGuiIO& io = ImGui::GetIO();
+                    auto ctrl = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+
+                    // If cursor position change and there isn't already a selection, reset the selection
+                    if (this->m_textViewer.IsCursorPositionChanged() && !this->m_textViewer.HasSelection() && !ImGui::IsPopupOpen("Patch menu")) {
+                        this->m_viewerHasSelection = false;
+                        this->m_viewerSelectionStart = this->m_textViewer.GetCursorPosition();
                     }
-                    // TODO : add "replace by nop" option
+
+                    // Set selection on Ctrl+A
+                    if (ctrl && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_A))) {
+                        this->m_viewerHasSelection = true;
+                    }
+
+                    // Change selection mode to lines when the user finish his selection (on mouse/shift key released)
+                    if (this->m_textViewer.HasSelection()
+                            && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsKeyReleased(ImGuiKey_LeftShift) || ImGui::IsKeyReleased(ImGuiKey_RightShift))
+                            && !ImGui::IsPopupOpen("Patch menu")) {
+                        this->m_viewerSelectionEnd = this->m_textViewer.GetCursorPosition();
+                        this->m_textViewer.SetSelection(this->m_viewerSelectionStart, this->m_viewerSelectionEnd, TextEditor::SelectionMode::Line);
+                        this->m_viewerHasSelection = true;
+                    }
+                    
+                    // Open the popup menu on right click
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && this->m_viewerHasSelection) {
+                        ImGui::OpenPopup("Patch menu");
+                    }
+
+                    // Popup menu for patching instruction
+                    if (ImGui::BeginPopupContextItem("Patch menu", 3)) {
+                        if (ImGui::Selectable("Patch these instructions")) {
+                            // Set the text of instruction editor from selection and make it visible
+                            this->m_instrEditor.SetText(this->m_textViewer.GetSelectedText().c_str());
+                            setInstrEditorVisible(true);
+                            //ImGui::CloseCurrentPopup();
+                        }
+                        // TODO : add "replace by nop" option
+                        if (ImGui::Selectable("Replace by NOP")) {
+                            // Replace instructions selected by nop
+                            std::printf("Replace by NOP\n");
+                        }
+                    }
+                    ImGui::EndPopup();
                 }
-                ImGui::EndPopup();
             }
         }
     }

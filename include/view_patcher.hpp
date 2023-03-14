@@ -22,14 +22,14 @@ namespace ui {
 
     inline void regionSelectionPicker(SelectedRegion *region, bool showHeader = true, bool firstEntry = false) {
         if (showHeader)
-            ImGui::Header("hex.builtin.common.range", firstEntry);
+            ImGui::Header("Range", firstEntry);
             // ImGui::Header("hex.builtin.common.range"_lang, firstEntry);
 
         // if (ImGui::RadioButton("hex.builtin.common.range.entire_data"_lang, *region == SelectedRegion::EntireData))
-        if (ImGui::RadioButton("hex.builtin.common.range.entire_data", *region == SelectedRegion::EntireData))
+        if (ImGui::RadioButton("Entire Data", *region == SelectedRegion::EntireData))
             *region = SelectedRegion::EntireData;
         // if (ImGui::RadioButton("hex.builtin.common.range.selection"_lang, *region == SelectedRegion::Selection))
-        if (ImGui::RadioButton("hex.builtin.common.range.selection", *region == SelectedRegion::Selection))
+        if (ImGui::RadioButton("Selection", *region == SelectedRegion::Selection))
             *region = SelectedRegion::Selection;
     }
 }
@@ -105,6 +105,8 @@ public:
     void drawContent() override;
 
 private:
+    // Disassembly stuff
+    
     TaskHolder m_disassemblerTask;
 
     u64 m_baseAddress   = 0;
@@ -125,7 +127,9 @@ private:
     TextEditor::Coordinates m_viewerSelectionEnd;
     bool m_viewerHasSelection = false;
 
+    void setTextFromDisassembly();
     bool isCursorInTextViewer(ImVec2 pos, ImVec2 size);
+    void setInstrEditorVisible(bool isVisible);
 
     TextEditor m_instrEditor;
     bool m_instrEditorIsVisible = false;
