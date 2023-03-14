@@ -21,6 +21,15 @@ void ViewPatcher::disassemble() {
     this->m_disassembly.clear();
 
     this->m_disassemblerTask = TaskManager::createTask("hex.builtin.view.disassembler.disassembling", this->m_codeRegion.getSize(), [this](auto &task) {
+
+        // @TMP: sample code to check if we can compile with keystone
+        ks_engine *ks;
+        ks_err err = ks_open(KS_ARCH_X86, KS_MODE_64, &ks);
+        if (err != KS_ERR_OK) {
+            printf("ERROR: failed on ks_open(), quit\n");
+            return;
+        }
+
         csh capstoneHandle;
         cs_insn *instructions = nullptr;
 
