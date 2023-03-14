@@ -3,7 +3,7 @@
 #include <hex/api/content_registry.hpp>
 #include <hex/ui/view.hpp>
 #include <TextEditor.h>
-#include "patcher.hpp"
+#include "view_patcher.hpp"
 
 ViewPatcher::ViewPatcher() : View("Patcher") {
     EventManager::subscribe<EventProviderDeleted>(this, [this](const auto*) {
