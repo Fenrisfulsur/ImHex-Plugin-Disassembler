@@ -2,7 +2,7 @@
 
 #include <hex/plugin.hpp>
 #include <hex/ui/view.hpp>
-// #include <hex/ui/widgets.hpp>
+// #include <ui/widgets.hpp>
 #include <imgui.h>
 #include <hex/ui/imgui_imhex_extensions.h>
 
@@ -30,7 +30,6 @@ namespace ui {
         // if (ImGui::RadioButton("hex.builtin.common.range.selection"_lang, *region == SelectedRegion::Selection))
         if (ImGui::RadioButton("hex.builtin.common.range.selection", *region == SelectedRegion::Selection))
             *region = SelectedRegion::Selection;
-
     }
 }
 
@@ -45,10 +44,10 @@ struct Disassembly {
     std::string operators;
 };
 
-class ViewExample : public View {
+class ViewPatcher : public View {
 public:
-    explicit ViewExample();
-    ~ViewExample() override;
+    explicit ViewPatcher();
+    ~ViewPatcher() override;
 
     void drawContent() override;
 
@@ -59,12 +58,22 @@ private:
     ui::SelectedRegion m_range = ui::SelectedRegion::EntireData;
     Region m_codeRegion = { 0, 0 };
 
-    TextEditor m_textEditor;
-
     Architecture m_architecture = Architecture::ARM;
     cs_mode m_mode              = cs_mode(0);
 
     std::vector<Disassembly> m_disassembly;
 
     void disassemble();
+
+    // Instructions viewer and editor
+
+    TextEditor m_textViewer;
+    TextEditor::Coordinates m_viewerSelectionStart;
+    TextEditor::Coordinates m_viewerSelectionEnd;
+    bool m_viewerHasSelection = false;
+
+    bool isCursorInTextViewer(ImVec2 pos, ImVec2 size);
+
+    TextEditor m_instrEditor;
+    bool m_instrEditorIsVisible = false;
 };

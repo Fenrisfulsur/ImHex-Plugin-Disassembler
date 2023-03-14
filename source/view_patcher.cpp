@@ -3,88 +3,102 @@
 #include <hex/api/content_registry.hpp>
 #include <hex/ui/view.hpp>
 #include <TextEditor.h>
-#include "plugin_example.hpp"
+#include "patcher.hpp"
 
-ViewExample::ViewExample() : View("Example") {
+ViewPatcher::ViewPatcher() : View("Patcher") {
     EventManager::subscribe<EventProviderDeleted>(this, [this](const auto*) {
         this->m_disassembly.clear();
     });
 }
 
-ViewExample::~ViewExample() {
+ViewPatcher::~ViewPatcher() {
     EventManager::unsubscribe<EventDataChanged>(this);
     EventManager::unsubscribe<EventRegionSelected>(this);
     EventManager::unsubscribe<EventProviderDeleted>(this);
 }
 
-void ViewExample::disassemble() {
-        this->m_disassembly.clear();
+void ViewPatcher::disassemble() {
+    this->m_disassembly.clear();
 
-        this->m_disassemblerTask = TaskManager::createTask("hex.builtin.view.disassembler.disassembling", this->m_codeRegion.getSize(), [this](auto &task) {
-            csh capstoneHandle;
-            cs_insn *instructions = nullptr;
+    this->m_disassemblerTask = TaskManager::createTask("hex.builtin.view.disassembler.disassembling", this->m_codeRegion.getSize(), [this](auto &task) {
+        csh capstoneHandle;
+        cs_insn *instructions = nullptr;
 
-            cs_mode mode = this->m_mode;
+        cs_mode mode = this->m_mode;
 
-            if (cs_open(Disassembler::toCapstoneArchitecture(this->m_architecture), mode, &capstoneHandle) == CS_ERR_OK) {
+        if (cs_open(Disassembler::toCapstoneArchitecture(this->m_architecture), mode, &capstoneHandle) == CS_ERR_OK) {
 
-                cs_option(capstoneHandle, CS_OPT_SKIPDATA, CS_OPT_ON);
+            cs_option(capstoneHandle, CS_OPT_SKIPDATA, CS_OPT_ON);
 
-                auto provider = ImHexApi::Provider::get();
-                std::vector<u8> buffer(2048, 0x00);
-                size_t size = this->m_codeRegion.getSize();
+            auto provider = ImHexApi::Provider::get();
+            std::vector<u8> buffer(2048, 0x00);
+            size_t size = this->m_codeRegion.getSize();
 
-                for (u64 address = 0; address < size; address += 2048) {
-                    task.update(address);
+            for (u64 address = 0; address < size; address += 2048) {
+                task.update(address);
 
-                    size_t bufferSize = std::min(u64(2048), (size - address));
-                    provider->read(this->m_codeRegion.getStartAddress() + address, buffer.data(), bufferSize);
+                size_t bufferSize = std::min(u64(2048), (size - address));
+                provider->read(this->m_codeRegion.getStartAddress() + address, buffer.data(), bufferSize);
 
-                    size_t instructionCount = cs_disasm(capstoneHandle, buffer.data(), bufferSize, this->m_baseAddress + address, 0, &instructions);
-                    if (instructionCount == 0)
-                        break;
+                size_t instructionCount = cs_disasm(capstoneHandle, buffer.data(), bufferSize, this->m_baseAddress + address, 0, &instructions);
+                if (instructionCount == 0)
+                    break;
 
-                    this->m_disassembly.reserve(this->m_disassembly.size() + instructionCount);
+                this->m_disassembly.reserve(this->m_disassembly.size() + instructionCount);
 
-                    u64 usedBytes = 0;
-                    for (u32 i = 0; i < instructionCount; i++) {
-                        const auto &instr       = instructions[i];
-                        Disassembly disassembly = { };
-                        disassembly.address     = instr.address;
-                        disassembly.offset      = this->m_codeRegion.getStartAddress() + address + usedBytes;
-                        disassembly.size        = instr.size;
-                        disassembly.mnemonic    = instr.mnemonic;
-                        disassembly.operators   = instr.op_str;
+                u64 usedBytes = 0;
+                for (u32 i = 0; i < instructionCount; i++) {
+                    const auto &instr       = instructions[i];
+                    Disassembly disassembly = { };
+                    disassembly.address     = instr.address;
+                    disassembly.offset      = this->m_codeRegion.getStartAddress() + address + usedBytes;
+                    disassembly.size        = instr.size;
+                    disassembly.mnemonic    = instr.mnemonic;
+                    disassembly.operators   = instr.op_str;
 
-                        for (u16 j = 0; j < instr.size; j++)
-                            disassembly.bytes += hex::format("{0:02X} ", instr.bytes[j]);
-                        disassembly.bytes.pop_back();
+                    for (u16 j = 0; j < instr.size; j++)
+                        disassembly.bytes += hex::format("{0:02X} ", instr.bytes[j]);
+                    disassembly.bytes.pop_back();
 
-                        this->m_disassembly.push_back(disassembly);
+                    this->m_disassembly.push_back(disassembly);
 
-                        usedBytes += instr.size;
-                    }
-
-                    if (instructionCount < bufferSize)
-                        address -= (bufferSize - usedBytes);
-
-                    cs_free(instructions, instructionCount);
+                    usedBytes += instr.size;
                 }
 
-                std::string content = "";
-                for (u32 i = 0; i < this->m_disassembly.size(); i++) {
-                    content += this->m_disassembly[i].mnemonic + " " + this->m_disassembly[i].operators + "\n";
-                }
-                this->m_textEditor.SetText(content);
+                if (instructionCount < bufferSize)
+                    address -= (bufferSize - usedBytes);
 
-                cs_close(&capstoneHandle);
+                cs_free(instructions, instructionCount);
             }
-        });
-    }
 
-void ViewExample::drawContent() {
+            // Write disassembly result in TextEditor
 
-    if (ImGui::Begin(View::toWindowName("hex.builtin.view.disassembler.name").c_str(), &this->getWindowOpenState(), ImGuiWindowFlags_NoCollapse)) {
+            std::string content = "";
+            for (u32 i = 0; i < this->m_disassembly.size(); i++) {
+                content += this->m_disassembly[i].mnemonic + " " + this->m_disassembly[i].operators + "\n";
+            }
+            this->m_textViewer.SetReadOnly(true);
+            this->m_textViewer.SetShowWhitespaces(false);
+            this->m_textViewer.SetText(content);
+
+            cs_close(&capstoneHandle);
+        }
+    });
+}
+
+// ViewPatcher::isCursorInTextViewer() : return true if mouse is inside the text viewer
+bool ViewPatcher::isCursorInTextViewer(ImVec2 pos, ImVec2 size) {
+    ImVec2 mousePos  = ImGui::GetMousePos();
+    // Compute absolute position of text viewer
+    ImVec2 textViewerAbsPos = ImGui::GetWindowPos() + pos;
+
+    return (mousePos.x >= textViewerAbsPos.x && mousePos.y >= textViewerAbsPos.y)
+            && (mousePos.x <= textViewerAbsPos.x + size.x && mousePos.y <= textViewerAbsPos.y + size.y);
+}
+
+void ViewPatcher::drawContent() {
+
+    if (ImGui::Begin(View::toWindowName("Patcher").c_str(), &this->getWindowOpenState(), ImGuiWindowFlags_NoCollapse)) {
 
         auto provider = ImHexApi::Provider::get();
         if (ImHexApi::Provider::isValid() && provider->isReadable()) {
@@ -318,7 +332,7 @@ void ViewExample::drawContent() {
             }
             ImGui::EndChild();
 
-            ImGui::BeginDisabled(this->m_disassemblerTask.isRunning());
+            ImGui::BeginDisabled(this->m_disassemblerTask.isRunning() || this->m_instrEditorIsVisible);
             {
                 if (ImGui::Button("hex.builtin.view.disassembler.disassemble"_lang))
                     this->disassemble();
@@ -335,49 +349,112 @@ void ViewExample::drawContent() {
             ImGui::TextUnformatted("hex.builtin.view.disassembler.disassembly.title"_lang);
             ImGui::Separator();
 
-            auto textEditorSize = ImGui::GetContentRegionAvail();
-            textEditorSize.y *= 3.75 / 5.0;
-            textEditorSize.y -= ImGui::GetTextLineHeightWithSpacing();
-            this->m_textEditor.Render("hex.builtin.view.pattern_editor.name"_lang, textEditorSize, true);
+            // Text viewer and editor render and events handling
 
-            // if (ImGui::BeginTable("##disassembly", 4, ImGuiTableFlags_ScrollY | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable)) {
-            //     ImGui::TableSetupScrollFreeze(0, 1);
-            //     ImGui::TableSetupColumn("hex.builtin.view.disassembler.disassembly.address"_lang);
-            //     ImGui::TableSetupColumn("hex.builtin.view.disassembler.disassembly.offset"_lang);
-            //     ImGui::TableSetupColumn("hex.builtin.view.disassembler.disassembly.bytes"_lang);
-            //     ImGui::TableSetupColumn("hex.builtin.view.disassembler.disassembly.title"_lang);
+            // Compute text viewer and editor size
+            auto textViewerPos  = ImGui::GetCursorPos();
+            auto textViewerSize = ImGui::GetContentRegionAvail();
+            textViewerSize.x *= 0.49;  // side by side widget
+            textViewerSize.y *= 3.75 / 5.0;
+            //textViewerSize.y -= ImGui::GetTextLineHeightWithSpacing();
+            this->m_textViewer.Render("Disassembly viewer", textViewerSize, false);
 
-            //     if (!this->m_disassemblerTask.isRunning()) {
-            //         ImGuiListClipper clipper;
-            //         clipper.Begin(this->m_disassembly.size());
+            if (this->m_instrEditorIsVisible) {
+                // Use the same size as the text viewer to place it next to it
+                ImGui::SameLine();
+                this->m_instrEditor.SetShowWhitespaces(false);
+                this->m_instrEditor.Render("Instruction editor", textViewerSize, false);
+            }
+            ImGui::Spacing();
 
-            //         ImGui::TableHeadersRow();
-            //         while (clipper.Step()) {
-            //             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-            //                 const auto &instruction = this->m_disassembly[i];
-            //                 ImGui::TableNextRow();
-            //                 ImGui::TableNextColumn();
-            //                 if (ImGui::Selectable(("##DisassemblyLine" + std::to_string(i)).c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
-            //                     ImHexApi::HexEditor::setSelection(instruction.offset, instruction.size);
-            //                 }
-            //                 ImGui::SameLine();
-            //                 ImGui::TextFormatted("0x{0:X}", instruction.address);
-            //                 ImGui::TableNextColumn();
-            //                 ImGui::TextFormatted("0x{0:X}", instruction.offset);
-            //                 ImGui::TableNextColumn();
-            //                 ImGui::TextUnformatted(instruction.bytes.c_str());
-            //                 ImGui::TableNextColumn();
-            //                 ImGui::TextFormattedColored(ImColor(0xFFD69C56), "{}", instruction.mnemonic);
-            //                 ImGui::SameLine();
-            //                 ImGui::TextUnformatted(instruction.operators.c_str());
-            //             }
-            //         }
+            // Add undo and redo button because TextEditor is read-only
+            this->m_textViewer.SetReadOnly(false);
+            ImGui::BeginDisabled(!this->m_textViewer.CanUndo() || this->m_instrEditorIsVisible);
+            if (ImGui::Button(" < Undo ")) {
+                this->m_textViewer.Undo();
+                this->m_textViewer.Undo();
+            }
+            ImGui::EndDisabled();
 
-            //         clipper.End();
-            //     }
+            ImGui::SameLine();
 
-            //     ImGui::EndTable();
-            // }
+            ImGui::BeginDisabled(!this->m_textViewer.CanRedo() || this->m_instrEditorIsVisible);
+            if (ImGui::Button(" Redo > ")) {
+                this->m_textViewer.Redo();
+                this->m_textViewer.Redo();
+            }
+            ImGui::EndDisabled();
+            this->m_textViewer.SetReadOnly(true);
+
+            if (this->m_instrEditorIsVisible) {
+                // Add WindowPadding two times to align button with TextEditor
+                ImGui::SameLine(textViewerSize.x + ImGui::GetStyle().WindowPadding.x * 2.0);
+                if (ImGui::Button("Cancel")) {
+                    this->m_instrEditorIsVisible = false;
+                    this->m_textViewer.SetHandleMouseInputs(true);
+                    this->m_textViewer.SetHandleKeyboardInputs(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Save the modifications")) {
+                    this->m_instrEditorIsVisible = false;
+                    this->m_textViewer.SetHandleMouseInputs(true);
+                    this->m_textViewer.SetHandleKeyboardInputs(true);
+                    this->m_textViewer.SetReadOnly(false);
+                    // Cut the selection and replace it by the modified instructions
+                    this->m_textViewer.Delete();
+                    // Get the text and remove last character (\n)
+                    std::string modifiedInstr = this->m_instrEditor.GetText();
+                    modifiedInstr.pop_back();
+                    ImGui::SetClipboardText(modifiedInstr.c_str());
+                    this->m_textViewer.Paste();
+                    this->m_textViewer.SetReadOnly(true);
+                }
+            }
+
+            if (this->isCursorInTextViewer(textViewerPos, textViewerSize) && !this->m_instrEditorIsVisible) {
+                ImGuiIO& io = ImGui::GetIO();
+                auto ctrl = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+
+                // If cursor position change and there isn't already a selection, reset the selection
+                if (this->m_textViewer.IsCursorPositionChanged() && !this->m_textViewer.HasSelection() && !ImGui::IsPopupOpen("Patch menu")) {
+                    this->m_viewerHasSelection = false;
+                    this->m_viewerSelectionStart = this->m_textViewer.GetCursorPosition();
+                }
+
+                // Set selection on Ctrl+A
+                if (ctrl && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_A))) {
+                    this->m_viewerHasSelection = true;
+                }
+
+                // Change selection mode to lines when the user finish his selection (on mouse/shift key released)
+                if (this->m_textViewer.HasSelection()
+                        && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsKeyReleased(ImGuiKey_LeftShift) || ImGui::IsKeyReleased(ImGuiKey_RightShift))
+                        && !ImGui::IsPopupOpen("Patch menu")) {
+                    this->m_viewerSelectionEnd = this->m_textViewer.GetCursorPosition();
+                    this->m_textViewer.SetSelection(this->m_viewerSelectionStart, this->m_viewerSelectionEnd, TextEditor::SelectionMode::Line);
+                    this->m_viewerHasSelection = true;
+                }
+                
+                // Open the popup menu on right click
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && this->m_viewerHasSelection) {
+                    ImGui::OpenPopup("Patch menu");
+                }
+
+                // Popup menu for patching instruction
+                if (ImGui::BeginPopupContextItem("Patch menu", 2)) {
+                    if (ImGui::Selectable("Patch these instructions")) {
+                        // Set the text of instruction editor from selection and make it visible
+                        this->m_instrEditor.SetText(this->m_textViewer.GetSelectedText().c_str());
+                        this->m_instrEditorIsVisible = true;
+                        // Disable mouse and keyboard event handler in the text viewer
+                        this->m_textViewer.SetHandleMouseInputs(false);
+                        this->m_textViewer.SetHandleKeyboardInputs(false);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    // TODO : add "replace by nop" option
+                }
+                ImGui::EndPopup();
+            }
         }
     }
     ImGui::End();
@@ -385,6 +462,6 @@ void ViewExample::drawContent() {
 
 IMHEX_PLUGIN_SETUP("C++ Template Plugin", "Plugin Author", "Plugin Description") {
 
-    hex::ContentRegistry::Views::add<ViewExample>();
+    hex::ContentRegistry::Views::add<ViewPatcher>();
 
 }
