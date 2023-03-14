@@ -13,19 +13,25 @@ include("${IMHEX_BASE_FOLDER}/cmake/build_helpers.cmake")
 add_subdirectory(${IMHEX_BASE_FOLDER})
 addVersionDefines()
 
+# Include capstone / keystone
+set(BUILD_LIBS_ONLY ON CACHE BOOL "Only build keystone libraries")
+add_subdirectory(external/capstone)
+add_subdirectory(external/keystone)
+
 # Add your source files here #
 add_library(${PROJECT_NAME} SHARED
         source/view_patcher.cpp
 )
 
 # Add additional include directories here #
-target_include_directories(${PROJECT_NAME} PRIVATE
-    include/
-)
+target_include_directories(${PROJECT_NAME} PRIVATE include external/keystone/includes)
+
+# target_include_directories(${PROJECT_NAME} PRIVATE
+#     include/
+# )
+
 # Add additional libraries here #
-target_link_libraries(${PROJECT_NAME} PRIVATE)
-
-
+target_link_libraries(${PROJECT_NAME} PRIVATE keystone capstone)
 
 # ---- No need to change anything from here downwards unless you know what you're doing ---- #
 

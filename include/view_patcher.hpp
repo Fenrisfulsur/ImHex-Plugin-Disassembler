@@ -6,7 +6,8 @@
 #include <imgui.h>
 #include <hex/ui/imgui_imhex_extensions.h>
 
-#include <hex/helpers/disassembler.hpp>
+#include <keystone/keystone.h>
+#include <capstone.h>
 
 #include <cstdio>
 #include <string>
